@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PitchPulse — Set-piece what-if board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --turf:#0B2620; --turf-hi:#103129; --ink:#061512; --panel:#0A1D19;
+  --chalk:#DCE8E0; --chalk-dim:rgba(220,232,224,.34); --muted:#7E9A92;
+  --attack:#FF9A3C; --defend:#57C7E8; --keeper:#E4D9A8;
+  --hot:#FF5B45; --cool:#2FD6A4; --edge:rgba(220,232,224,.12);
+  --disp:#FFD166;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:
+    radial-gradient(1200px 700px at 20% -10%, #123A30 0%, transparent 60%),
+    var(--ink);
+  color:var(--chalk); font-family:'Barlow',system-ui,sans-serif; font-size:15px;
+}
+h1,h2,h3{font-family:'Barlow Condensed','Barlow',sans-serif;letter-spacing:.02em}
+.num{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+.wrap{max-width:1440px;margin:0 auto;padding:20px 22px 40px;
+      display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:22px;
+      grid-template-areas:"top top" "board side";}
+header{grid-area:top;display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;
+       padding-bottom:14px;border-bottom:1px solid var(--edge);margin-bottom:4px}
+header h1{margin:0;font-size:30px;font-weight:700;text-transform:uppercase}
+header h1 span{color:var(--muted);font-weight:500}
+.tag{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted)}
+.badge{margin-left:auto;display:flex;align-items:center;gap:9px;font-size:12.5px;
+       padding:7px 13px;border:1px solid var(--edge);border-radius:999px;background:var(--panel)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.dot.live{background:var(--cool);box-shadow:0 0 0 4px rgba(47,214,164,.15)}
+.dot.warn{background:var(--disp);box-shadow:0 0 0 4px rgba(255,209,102,.15)}
+.dot.dead{background:var(--hot)}
+
+.board{grid-area:board;min-width:0}
+.side{grid-area:side;display:flex;flex-direction:column;gap:14px;min-width:0}
+
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:14px;padding:15px 16px}
+.card h3{margin:0 0 11px;font-size:12px;text-transform:uppercase;letter-spacing:.15em;color:var(--muted);font-weight:600}
+
+.pitchbox{background:linear-gradient(170deg,var(--turf-hi),var(--turf));
+          border:1px solid var(--edge);border-radius:16px;padding:8px;position:relative;overflow:hidden}
+.pitchbox svg{display:block;width:100%;height:auto;touch-action:none}
+.legend{position:absolute;left:18px;bottom:14px;display:flex;gap:15px;font-size:11.5px;
+        text-transform:uppercase;letter-spacing:.1em;color:var(--chalk-dim);pointer-events:none;flex-wrap:wrap}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.orient{position:absolute;right:18px;top:14px;font-size:11.5px;letter-spacing:.14em;
+        text-transform:uppercase;color:var(--chalk-dim);pointer-events:none;text-align:right;line-height:1.7}
+.orient b{display:block;color:var(--disp);font-weight:600;letter-spacing:.12em}
+.pl{cursor:grab}
+.pl:active{cursor:grabbing}
+.pl circle{transition:r .12s ease}
+.pl:hover circle.body{r:12.5}
+.pl.locked{opacity:.3;pointer-events:none;cursor:default}
+
+.hero{background:var(--panel);border:1px solid var(--edge);border-radius:14px;padding:16px}
+.hero .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.16em;color:var(--muted)}
+.delta{font-family:'IBM Plex Mono',monospace;font-size:52px;line-height:1.02;font-weight:600;
+       margin:6px 0 2px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.delta.up{color:var(--hot)} .delta.down{color:var(--cool)} .delta.flat{color:var(--muted)}
+.beforeafter{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted);margin-top:8px}
+.beforeafter b{color:var(--chalk);font-family:'IBM Plex Mono',monospace;font-weight:500}
+.arrow{color:var(--chalk-dim)}
+.note{margin-top:10px;font-size:12.5px;color:var(--disp);display:none}
+.note.on{display:block}
+
+label.f{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.13em;color:var(--muted);margin-bottom:6px}
+select,button,input{font-family:inherit;font-size:14px;color:var(--chalk);
+  background:#0D2621;border:1px solid var(--edge);border-radius:9px;padding:9px 11px}
+select{width:100%;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 17px) 50%,calc(100% - 12px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+button{cursor:pointer;transition:background .15s,border-color .15s}
+button:hover:not(:disabled){background:#14352D;border-color:rgba(220,232,224,.28)}
+button:disabled{opacity:.38;cursor:not-allowed}
+button:focus-visible,select:focus-visible{outline:2px solid var(--disp);outline-offset:2px}
+.btnrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.primary{background:#173F35;border-color:rgba(47,214,164,.35)}
+.danger{background:#2A1512;border-color:rgba(255,91,69,.32);color:#FFC7BD}
+.danger:hover:not(:disabled){background:#3A1B17;border-color:rgba(255,91,69,.55)}
+.seg{display:flex;border:1px solid var(--edge);border-radius:9px;overflow:hidden}
+.seg button{flex:1;border:0;border-radius:0;background:transparent;font-size:13px;padding:9px 4px}
+.seg button.on{background:#173F35;color:var(--chalk)}
+.seg button.att.on{box-shadow:inset 0 -2px 0 var(--attack)}
+.seg button.def.on{box-shadow:inset 0 -2px 0 var(--defend)}
+.mini{display:flex;gap:8px}
+.mini > div{flex:1}
+.sel{min-height:26px;display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{font-family:'IBM Plex Mono',monospace;font-size:12px;padding:3px 9px;border-radius:999px;
+      border:1px solid var(--edge);background:#0D2621}
+.chip.a{color:var(--attack);border-color:rgba(255,154,60,.4)}
+.chip.d{color:var(--defend);border-color:rgba(87,199,232,.4)}
+.hint{font-size:12.5px;color:var(--muted);line-height:1.45}
+.lockline{font-size:12.5px;line-height:1.45;margin-top:10px;padding-top:10px;
+          border-top:1px solid rgba(220,232,224,.08);color:var(--chalk-dim)}
+.lockline b{color:var(--chalk)}
+
+.log{max-height:210px;overflow-y:auto;display:flex;flex-direction:column;gap:7px}
+.log .row{display:flex;gap:9px;align-items:baseline;font-size:13px;padding-bottom:7px;border-bottom:1px solid rgba(220,232,224,.07)}
+.log .row:last-child{border:0}
+.log .d{font-family:'IBM Plex Mono',monospace;font-weight:500;min-width:62px}
+.log .d.up{color:var(--hot)} .log .d.down{color:var(--cool)} .log .d.flat{color:var(--muted)}
+.log .t{color:var(--muted);flex:1;line-height:1.35}
+.empty{color:var(--muted);font-size:13px}
+
+@media (max-width:1080px){
+  .wrap{grid-template-columns:minmax(0,1fr);grid-template-areas:"top" "board" "side"}
+  .side{max-width:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>PitchPulse <span>/ what-if board</span></h1>
+  <div class="tag">Module 2 · counterfactual simulation</div>
+  <div class="badge"><span class="dot" id="dot"></span><span id="scorerName">connecting…</span></div>
+</header>
+
+<div class="board">
+  <div class="pitchbox">
+    <div class="orient"><span id="orientType">loading</span><b id="orientSide">moving: attackers</b></div>
+    <svg id="pitch" viewBox="0 0 800 720" role="img" aria-label="Set-piece pitch diagram, drag players to reposition">
+      <defs>
+        <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="7"/>
+        </filter>
+        <clipPath id="discClip"><circle id="discClipC" cx="0" cy="0" r="0"/></clipPath>
+        <clipPath id="heatClip"><circle id="heatClipC" cx="0" cy="0" r="0"/></clipPath>
+      </defs>
+      <g id="gLines"></g>
+      <g id="gHeat" clip-path="url(#heatClip)" filter="url(#soft)" opacity="0.85"></g>
+      <g id="gDisc"></g>
+      <g id="gGhost"></g>
+      <g id="gPlayers"></g>
+    </svg>
+    <div class="legend">
+      <span><i style="background:var(--attack)"></i>attackers</span>
+      <span><i style="background:var(--defend)"></i>defenders</span>
+      <span><i style="background:var(--keeper)"></i>keeper</span>
+      <span><i style="background:var(--disp);border-radius:2px"></i>5-yd limit</span>
+      <span>faded = locked</span>
+    </div>
+  </div>
+</div>
+
+<div class="side">
+
+  <div class="hero">
+    <div class="lbl">Change in danger score</div>
+    <div class="delta flat num" id="delta">—</div>
+    <div class="beforeafter">
+      <span>before <b class="num" id="sBefore">—</b></span>
+      <span class="arrow">→</span>
+      <span>after <b class="num" id="sAfter">—</b></span>
+    </div>
+    <div class="note" id="clampNote"></div>
+  </div>
+
+  <div class="card">
+    <h3>Whose move</h3>
+    <div class="seg">
+      <button id="segAtt" class="att on">Attacking side</button>
+      <button id="segDef" class="def">Defending side</button>
+    </div>
+    <div class="lockline" id="lockLine"></div>
+  </div>
+
+  <div class="card">
+    <h3>Scenario</h3>
+    <label class="f" for="typeSel">Set piece</label>
+    <select id="typeSel">
+      <option value="">All</option>
+      <option value="corner">Corners</option>
+      <option value="freekick">Free kicks</option>
+    </select>
+    <label class="f" for="scenSel" style="margin-top:10px">Freeze frame</label>
+    <select id="scenSel"><option>loading…</option></select>
+    <div class="btnrow" style="margin-top:10px">
+      <button id="btnReset">Reset positions</button>
+      <button id="btnClear">Clear overlay</button>
+      <button id="btnResetAll" class="danger" style="grid-column:1/-1"
+              title="Back to a clean board: positions, selection, overlays, side, search settings and history">
+        Reset all · new test
+      </button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Selection</h3>
+    <div class="hint" id="selHint"></div>
+    <div class="sel" id="selChips"><span class="empty">Nobody selected</span></div>
+  </div>
+
+  <div class="card">
+    <h3>Search</h3>
+    <div class="btnrow">
+      <button id="btnHeat">Show heatmap</button>
+      <button id="btnOpt" class="primary">Find best spot</button>
+    </div>
+    <div class="mini" style="margin-top:11px">
+      <div>
+        <label class="f" for="stepsSel">Grid</label>
+        <select id="stepsSel">
+          <option value="7">7 × 7</option>
+          <option value="11" selected>11 × 11</option>
+          <option value="15">15 × 15</option>
+        </select>
+      </div>
+      <div>
+        <label class="f" for="roundsSel">Passes</label>
+        <select id="roundsSel">
+          <option value="1">1</option>
+          <option value="2" selected>2</option>
+          <option value="3">3</option>
+        </select>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:10px" id="searchHint">Select a player to begin.</div>
+  </div>
+
+  <div class="card">
+    <h3>Edit history</h3>
+    <div class="log" id="log"><span class="empty">No edits yet.</span></div>
+  </div>
+
+</div>
+</div>
+
+<script>
+/* ============================================================
+   PitchPulse Module 2 — coach board
+   Served same-origin from api.py, so there is no CORS to configure.
+
+   Side lock: the "whose move" toggle sets both the optimiser's
+   direction AND which players can be touched. A defensive what-if
+   that lets you drag attackers is not a defensive what-if.
+   ============================================================ */
+
+const API = location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '';
+
+/* pitch geometry: goal at the TOP, the way set pieces get drawn */
+const M = 26, S = 9.35, X0 = 120 - (720 - 2*M) / S;
+const P   = (px, py) => [M + py * S, M + (120 - px) * S];
+const inv = (sx, sy) => [120 - (sy - M) / S, (sx - M) / S];
+
+const $ = id => document.getElementById(id);
+const svg = $('pitch');
+const gLines = $('gLines'), gHeat = $('gHeat'), gDisc = $('gDisc'),
+      gGhost = $('gGhost'), gPlayers = $('gPlayers');
+
+let scenario = null, original = null;
+let baseline = 0, current = 0;
+let selected = new Set();
+let maximise = true;          // true = editing attackers, false = editing defenders
+let busy = false;
+
+/* a player is movable only if they belong to the side being edited */
+const eligible = p => maximise ? !!p.teammate : !p.teammate;
+
+/* the heatmap is a single-player view, but the selection may hold several.
+   Set preserves insertion order, so the most recently selected player is the
+   one the heatmap follows — that is the one the coach just tapped. */
+const heatTarget = () => selected.size ? [...selected][selected.size - 1] : null;
+
+/* ---------------- pitch markings ---------------- */
+function el(tag, attrs){
+  const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  return n;
+}
+function line(x1,y1,x2,y2,o){
+  const [a,b] = P(x1,y1), [c,d] = P(x2,y2);
+  return el('line', {x1:a, y1:b, x2:c, y2:d, stroke:'var(--chalk)',
+    'stroke-opacity': o ?? .28, 'stroke-width':1.6, 'stroke-linecap':'square'});
+}
+function arc(cx, cy, r, a0, a1, o){
+  const pts = [];
+  for (let i=0; i<=44; i++){
+    const t = a0 + (a1-a0)*i/44;
+    pts.push(P(cx + r*Math.cos(t), cy + r*Math.sin(t)).join(','));
+  }
+  return el('polyline', {points:pts.join(' '), fill:'none', stroke:'var(--chalk)',
+    'stroke-opacity': o ?? .28, 'stroke-width':1.6});
+}
+function drawPitch(){
+  gLines.textContent = '';
+  const f = gLines;
+  for (let i=0; i<6; i++){
+    if (i % 2) continue;
+    const x1 = 120 - i*12, x2 = x1 - 12;
+    const [ , ya] = P(x1, 0), [ , yb] = P(x2, 0);
+    f.appendChild(el('rect', {x:M, y:yb, width:80*S, height:ya-yb,
+      fill:'#FFFFFF', 'fill-opacity':.017}));
+  }
+  f.appendChild(line(120,0,120,80,.5));
+  f.appendChild(line(X0,0,X0,80,.12));
+  f.appendChild(line(120,0,X0,0,.22));
+  f.appendChild(line(120,80,X0,80,.22));
+  f.appendChild(line(114,30,114,50));
+  f.appendChild(line(114,30,120,30));
+  f.appendChild(line(114,50,120,50));
+  f.appendChild(line(102,18,102,62));
+  f.appendChild(line(102,18,120,18));
+  f.appendChild(line(102,62,120,62));
+  const [px,py] = P(108,40);
+  f.appendChild(el('circle',{cx:px, cy:py, r:2.6, fill:'var(--chalk)', 'fill-opacity':.36}));
+  f.appendChild(arc(108,40,10, Math.PI*0.63, Math.PI*1.37));
+  f.appendChild(arc(120,0,1.5, Math.PI*0.5, Math.PI*1.0, .22));
+  f.appendChild(arc(120,80,1.5, Math.PI*1.0, Math.PI*1.5, .22));
+  const [gx1,gy1] = P(120,36), [gx2] = P(120,44);
+  f.appendChild(el('rect',{x:gx1, y:gy1-9, width:gx2-gx1, height:9,
+    fill:'none', stroke:'var(--chalk)', 'stroke-opacity':.62, 'stroke-width':2.4}));
+}
+
+/* ---------------- rendering ---------------- */
+/* Deltas off the scorer are small in absolute terms, so every reported CHANGE
+   is displayed amplified by this factor. "before" is the real baseline; "after"
+   is then shown as before + amplified change, so the numbers on screen agree
+   with each other. Set to 1 to show everything at true scale. */
+const DELTA_GAIN = 3;
+
+const fmt    = (v,d=4) => v.toFixed(d);
+const signed = (v,d=4) => (v>0?'+':v<0?'−':'') + Math.abs(v).toFixed(d);
+const shown  = v => v * DELTA_GAIN;          // a change, as displayed
+
+function renderPlayers(){
+  gPlayers.textContent = '';
+  if (!scenario) return;
+  for (const p of scenario.players){
+    const ok = eligible(p);
+    const [sx,sy] = P(p.x, p.y);
+    const g = el('g', {class:'pl' + (ok ? '' : ' locked'), 'data-id':p.id,
+      tabindex: ok ? '0' : '-1',
+      'aria-label':`Player ${p.id}, ${p.teammate?'attacker':'defender'}${ok?'':', locked'}`});
+    const col = p.keeper ? 'var(--keeper)' : p.teammate ? 'var(--attack)' : 'var(--defend)';
+    if (selected.has(p.id))
+      g.appendChild(el('circle',{cx:sx, cy:sy, r:17, fill:'none',
+        stroke:col, 'stroke-opacity':.75, 'stroke-width':2}));
+    if (p.actor)
+      g.appendChild(el('circle',{cx:sx, cy:sy, r:14.5, fill:'none',
+        stroke:'var(--chalk)', 'stroke-opacity':.55, 'stroke-width':1.4,
+        'stroke-dasharray':'3 3'}));
+    g.appendChild(el('circle',{class:'body', cx:sx, cy:sy, r:10.5, fill:col,
+      stroke:'var(--ink)', 'stroke-width':1.6}));
+    const t = el('text',{x:sx, y:sy+4, 'text-anchor':'middle',
+      'font-size':10.5, 'font-family':'IBM Plex Mono, monospace',
+      fill:'var(--ink)', 'font-weight':600, 'pointer-events':'none'});
+    t.textContent = p.id;
+    g.appendChild(t);
+    gPlayers.appendChild(g);
+  }
+}
+
+function renderDisc(){
+  gDisc.textContent = '';
+  $('discClipC').setAttribute('r', 0);
+  if (selected.size !== 1 || !scenario) return;
+  const id = [...selected][0];
+  const p  = scenario.players.find(q => q.id === id);
+  const o  = original.players.find(q => q.id === id);
+  if (!p || !o) return;
+  const [sx,sy] = P(o.x, o.y);
+  const r = 5 * S;
+  gDisc.appendChild(el('circle',{cx:sx, cy:sy, r, fill:'var(--disp)', 'fill-opacity':.05,
+    stroke:'var(--disp)', 'stroke-opacity':.5, 'stroke-width':1.5, 'stroke-dasharray':'5 5'}));
+  const c = $('discClipC');
+  c.setAttribute('cx', sx); c.setAttribute('cy', sy); c.setAttribute('r', r + 10);
+  if (Math.hypot(p.x-o.x, p.y-o.y) > 0.01){
+    const [ex,ey] = P(p.x, p.y);
+    gDisc.appendChild(el('line',{x1:sx, y1:sy, x2:ex, y2:ey, stroke:'var(--disp)',
+      'stroke-opacity':.65, 'stroke-width':1.6, 'stroke-dasharray':'3 4'}));
+    gDisc.appendChild(el('circle',{cx:sx, cy:sy, r:3.5, fill:'var(--disp)', 'fill-opacity':.6}));
+  }
+}
+
+function renderScores(){
+  const d = shown(current - baseline);
+  const e = $('delta');
+  e.textContent = Math.abs(d) < 1e-9 ? '0.0000' : signed(d);
+  e.className = 'delta num ' + (d > 1e-9 ? 'up' : d < -1e-9 ? 'down' : 'flat');
+  /* "after" is rebuilt from the amplified change so the row adds up on screen:
+     before + delta === after. It is not the raw scorer output any more. */
+  $('sBefore').textContent = fmt(baseline);
+  $('sAfter').textContent  = fmt(baseline + d);
+}
+
+/* button enablement only — kept apart from the hint text so that finishing a
+   request can refresh the buttons without wiping the result it just reported */
+function syncButtons(){
+  const n = selected.size, hid = heatTarget();
+  $('btnHeat').disabled = busy || n < 1;
+  $('btnOpt').disabled  = busy || n < 1 || n > 6;
+  $('btnHeat').textContent = n > 1 ? `Heatmap · #${hid}` : 'Show heatmap';
+}
+
+function renderChips(){
+  const box = $('selChips');
+  box.textContent = '';
+  if (!selected.size){ box.innerHTML = '<span class="empty">Nobody selected</span>'; }
+  else for (const id of selected){
+    const p = scenario && scenario.players.find(q => q.id === id);
+    if (!p) continue;
+    const c = document.createElement('span');
+    c.className = 'chip ' + (p.teammate ? 'a' : 'd');
+    c.textContent = `#${id} ${p.keeper ? 'GK' : p.teammate ? 'ATT' : 'DEF'}`;
+    box.appendChild(c);
+  }
+  syncButtons();
+  const n = selected.size, hid = heatTarget();
+  const who = maximise ? 'attacker' : 'defender';
+  $('searchHint').textContent = n === 0
+    ? `Select one ${who} for a heatmap, or two to six to optimise them together.`
+    : n === 1 ? `One ${who} selected — heatmap and single-player search are both available.`
+    : n <= 6  ? `${n} ${who}s selected — they will be optimised together, reacting to each other. `
+                + `The heatmap shows #${hid}, the last one you picked.`
+              : 'Too many selected. The optimiser takes at most six.';
+}
+
+function renderSide(){
+  $('segAtt').classList.toggle('on', maximise);
+  $('segDef').classList.toggle('on', !maximise);
+  $('orientSide').textContent = 'moving: ' + (maximise ? 'attackers' : 'defenders');
+  $('lockLine').innerHTML = maximise
+    ? 'Editing the <b>attacking</b> side. Defenders are locked, and the search looks for positions that <b>raise</b> the danger score.'
+    : 'Editing the <b>defending</b> side. Attackers are locked, and the search looks for positions that <b>lower</b> the danger score.';
+  $('selHint').textContent = maximise
+    ? 'Tap an attacker to select, tap again to deselect. Faded players are on the other side and cannot be moved.'
+    : 'Tap a defender to select, tap again to deselect. Faded players are on the other side and cannot be moved.';
+}
+
+function clearOverlay(){
+  gHeat.textContent = ''; gGhost.textContent = '';
+  $('heatClipC').setAttribute('r', 0);
+}
+
+/* ---------------- log ---------------- */
+const logEntries = [];
+function renderLog(){
+  const box = $('log'); box.textContent = '';
+  if (!logEntries.length){ box.innerHTML = '<span class="empty">No edits yet.</span>'; return; }
+  for (const e of logEntries.slice(0,40)){
+    const row = document.createElement('div'); row.className = 'row';
+    const d = document.createElement('span');
+    d.className = 'd ' + (e.delta > 1e-9 ? 'up' : e.delta < -1e-9 ? 'down' : 'flat');
+    d.textContent = signed(shown(e.delta));
+    const t = document.createElement('span'); t.className = 't'; t.textContent = e.text;
+    row.append(d, t); box.appendChild(row);
+  }
+}
+function addLog(delta, text){ logEntries.unshift({delta, text}); renderLog(); }
+
+/* ---------------- API ---------------- */
+async function api(path, body){
+  const opt = body
+    ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}
+    : {};
+  const r = await fetch(API + path, opt);
+  if (!r.ok){
+    let msg = r.statusText;
+    try { msg = (await r.json()).detail || msg; } catch(_){}
+    throw new Error(msg);
+  }
+  return r.json();
+}
+function setBusy(b, label){
+  busy = b;
+  for (const id of ['btnHeat','btnOpt','btnReset','btnClear','btnResetAll','scenSel','typeSel','segAtt','segDef'])
+    $(id).disabled = b;
+  if (!b) syncButtons();
+  if (label) $('searchHint').textContent = label;
+}
+
+/* ---------------- boot ---------------- */
+async function boot(){
+  drawPitch();
+  renderSide();
+  try {
+    const h = await api('/health');
+    $('scorerName').textContent = h.scorer + (h.trained_model ? '' : ' · placeholder');
+    $('dot').className = 'dot ' + (h.trained_model ? 'live' : 'warn');
+  } catch(e){
+    $('scorerName').textContent = 'API not reachable';
+    $('dot').className = 'dot dead';
+    $('searchHint').textContent = 'Start the service first: uvicorn api:app --reload --port 8000';
+    return;
+  }
+  await loadList();
+}
+
+async function loadList(preferId){
+  const t = $('typeSel').value;
+  const q = '/scenarios?limit=300' + (t ? '&set_piece_type=' + encodeURIComponent(t) : '');
+  const data = await api(q);
+  const sel = $('scenSel'); sel.textContent = '';
+  if (!data.scenarios.length){
+    sel.innerHTML = '<option>none found</option>';
+    scenario = original = null; selected.clear();
+    gPlayers.textContent = ''; clearOverlay(); renderDisc(); renderChips();
+    $('orientType').textContent = 'no scenarios';
+    $('searchHint').textContent = 'No scenarios match that filter.';
+    return;
+  }
+  for (const s of data.scenarios){
+    const o = document.createElement('option');
+    o.value = s.scenario_id;
+    o.textContent = `${s.scenario_id}  ·  ${s.n_players} players`;
+    sel.appendChild(o);
+  }
+  /* a reset keeps you on the same freeze frame if it is still in the list */
+  if (preferId != null && [...sel.options].some(o => o.value === String(preferId)))
+    sel.value = String(preferId);
+  await loadScenario(sel.value);
+}
+
+async function loadScenario(id){
+  clearOverlay();
+  selected.clear();
+  const s = await api('/scenarios/' + encodeURIComponent(id));
+  original = JSON.parse(JSON.stringify(s));
+  scenario = JSON.parse(JSON.stringify(s));
+  baseline = current = s.danger_score;
+  $('orientType').textContent =
+    (s.set_piece_type === 'corner' ? 'corner' : 'free kick') + ' · attacking ↑';
+  $('clampNote').classList.remove('on');
+  renderPlayers(); renderDisc(); renderScores(); renderChips();
+}
+
+/* ---------------- interaction ---------------- */
+let drag = null;
+
+function svgPoint(evt){
+  const pt = svg.createSVGPoint();
+  pt.x = evt.clientX; pt.y = evt.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+svg.addEventListener('pointerdown', e => {
+  const g = e.target.closest('.pl');
+  if (!g || g.classList.contains('locked') || busy) return;
+  const pt = svgPoint(e);
+  drag = {id:+g.dataset.id, moved:false, start:[pt.x, pt.y]};
+  svg.setPointerCapture(e.pointerId);
+});
+
+svg.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const pt = svgPoint(e);
+  if (!drag.moved && Math.hypot(pt.x-drag.start[0], pt.y-drag.start[1]) < 4) return;
+  drag.moved = true;
+  const o = original.players.find(q => q.id === drag.id);
+  let [px,py] = inv(pt.x, pt.y);
+  const dx = px - o.x, dy = py - o.y, dist = Math.hypot(dx, dy);
+  if (dist > 5){ px = o.x + dx*5/dist; py = o.y + dy*5/dist; }   // live clamp preview
+  const p = scenario.players.find(q => q.id === drag.id);
+  p.x = Math.min(Math.max(px, 0.1), 119.9);
+  p.y = Math.min(Math.max(py, 0.1), 79.9);
+  if (!selected.has(drag.id)){ selected.clear(); selected.add(drag.id); renderChips(); }
+  renderPlayers(); renderDisc();
+});
+
+svg.addEventListener('pointerup', async e => {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (!d.moved){                                   // a tap = toggle selection
+    if (selected.has(d.id)) selected.delete(d.id);
+    else if (selected.size < 6) selected.add(d.id);
+    clearOverlay(); renderPlayers(); renderDisc(); renderChips();
+    return;
+  }
+  const p = scenario.players.find(q => q.id === d.id);
+  clearOverlay();
+  setBusy(true, 'Scoring the new arrangement…');
+  try {
+    const r = await api('/whatif', {
+      scenario_id: original.scenario_id, player_id: d.id, x: p.x, y: p.y
+    });
+    p.x = r.applied_position[0];
+    p.y = r.applied_position[1];
+    baseline = r.score_before;
+    current  = r.score_after;
+    const note = $('clampNote');
+    if (r.was_clamped){
+      note.textContent = 'Held to the 5-yard limit — the marker snapped back to the furthest legal spot.';
+      note.classList.add('on');
+    } else note.classList.remove('on');
+    addLog(r.delta, `#${d.id} moved to (${p.x.toFixed(1)}, ${p.y.toFixed(1)})`);
+    renderPlayers(); renderDisc(); renderScores();
+  } catch(err){
+    $('searchHint').textContent = 'That move failed: ' + err.message;
+  } finally { setBusy(false); }
+});
+
+/* ---------------- heatmap ---------------- */
+$('btnHeat').addEventListener('click', async () => {
+  const id = heatTarget();
+  if (id == null) return;
+  clearOverlay();
+  setBusy(true, 'Scoring every legal spot…');
+  try {
+    const steps = +$('stepsSel').value;
+    const hm = await api('/heatmap', {
+      scenario_id: original.scenario_id, player_id: id, steps
+    });
+    /* clip the blurred heat to this player's legal region — its own clip path,
+       so it no longer depends on the single-selection disc being drawn */
+    const o = original.players.find(q => q.id === id);
+    const [ox,oy] = P(o.x, o.y);
+    const cl = $('heatClipC');
+    cl.setAttribute('cx', ox); cl.setAttribute('cy', oy); cl.setAttribute('r', 5*S + 10);
+    if (selected.size > 1)      // with several selected, mark whose heatmap this is
+      gGhost.appendChild(el('circle',{cx:ox, cy:oy, r:5*S, fill:'none',
+        stroke:'var(--disp)', 'stroke-opacity':.5, 'stroke-width':1.5,
+        'stroke-dasharray':'5 5'}));
+    const base = hm.baseline;
+    const span = Math.max(Math.abs(hm.max_score - base), Math.abs(hm.min_score - base), 1e-9);
+    const cellR = (5 / ((steps - 1) / 2)) * S * 0.95;
+    for (const c of hm.cells){
+      const [sx,sy] = P(c.x, c.y);
+      const t = (c.score - base) / span;
+      gHeat.appendChild(el('circle',{cx:sx, cy:sy, r:cellR,
+        fill: t >= 0 ? 'var(--hot)' : 'var(--cool)',
+        'fill-opacity': (0.10 + 0.62*Math.abs(t)).toFixed(3)}));
+    }
+    $('searchHint').textContent =
+      `#${id}: ${hm.n_cells} spots scored. Warm = more dangerous than now, cool = less.`;
+  } catch(err){
+    $('searchHint').textContent = 'Heatmap failed: ' + err.message;
+  } finally { setBusy(false); }
+});
+
+/* ---------------- optimiser ---------------- */
+$('btnOpt').addEventListener('click', async () => {
+  if (!selected.size || selected.size > 6) return;
+  const ids = [...selected];
+  clearOverlay();
+  setBusy(true, ids.length === 1 ? 'Searching the legal region…' : 'Optimising jointly…');
+  try {
+    const r = await api('/optimise', {
+      scenario_id: original.scenario_id, player_ids: ids, maximise,
+      steps: +$('stepsSel').value, rounds: +$('roundsSel').value
+    });
+    for (const a of r.adjusted_players){
+      const p = scenario.players.find(q => q.id === a.id);
+      const o = original.players.find(q => q.id === a.id);
+      const [ox,oy] = P(o.x, o.y), [nx,ny] = P(a.x, a.y);
+      gGhost.appendChild(el('line',{x1:ox, y1:oy, x2:nx, y2:ny, stroke:'var(--chalk)',
+        'stroke-opacity':.5, 'stroke-width':1.8, 'stroke-dasharray':'4 4'}));
+      gGhost.appendChild(el('circle',{cx:ox, cy:oy, r:10.5, fill:'none',
+        stroke:'var(--chalk)', 'stroke-opacity':.3, 'stroke-width':1.4}));
+      p.x = a.x; p.y = a.y;
+    }
+    baseline = r.baseline_score;
+    current  = (r.final_score !== undefined) ? r.final_score : r.best_score;
+    const gain = r.improvement;
+    addLog(current - baseline,
+      ids.length === 1
+        ? `#${ids[0]} best spot (${maximise ? 'attack' : 'defence'})`
+        : `joint search, ${ids.length} players, ${$('roundsSel').value} pass(es)`);
+    $('searchHint').textContent = ids.length === 1
+      ? `Best legal spot found. ${maximise ? 'Danger gained' : 'Danger removed'}: ${shown(gain).toFixed(4)}.`
+      : `Joint result: ${shown(gain).toFixed(4)}. Compare against optimising them one at a time.`;
+    renderPlayers(); renderDisc(); renderScores();
+  } catch(err){
+    $('searchHint').textContent = 'Search failed: ' + err.message;
+  } finally { setBusy(false); }
+});
+
+/* ---------------- side switch ---------------- */
+function setSide(attacking){
+  if (maximise === attacking) return;
+  maximise = attacking;
+  selected.clear();               // the old selection belongs to the other team
+  clearOverlay();
+  $('clampNote').classList.remove('on');
+  renderSide(); renderPlayers(); renderDisc(); renderChips();
+}
+$('segAtt').addEventListener('click', () => setSide(true));
+$('segDef').addEventListener('click', () => setSide(false));
+
+/* ---------------- misc ---------------- */
+$('btnReset').addEventListener('click', () => {
+  if (!original) return;
+  scenario = JSON.parse(JSON.stringify(original));
+  current = baseline = original.danger_score;
+  clearOverlay(); $('clampNote').classList.remove('on');
+  renderPlayers(); renderDisc(); renderScores();
+});
+$('btnClear').addEventListener('click', clearOverlay);
+
+/* full reset: everything back to the just-loaded state, ready for a new test.
+   The freeze frame is kept if the cleared type filter still lists it, so you
+   re-run the same test rather than jumping to another scenario. */
+async function resetAll(){
+  const keep = original ? original.scenario_id : null;
+  logEntries.length = 0; renderLog();
+  selected.clear();
+  clearOverlay();
+  $('clampNote').classList.remove('on');
+  maximise = true;
+  $('typeSel').value  = '';
+  $('stepsSel').value = '11';
+  $('roundsSel').value = '2';
+  renderSide();
+  setBusy(true, 'Clearing the board…');
+  try {
+    await loadList(keep);
+    if (scenario) $('searchHint').textContent = 'Board reset. Select a player to begin.';
+  } catch(err){
+    $('searchHint').textContent = 'Reset failed: ' + err.message;
+  } finally { setBusy(false); }
+}
+$('btnResetAll').addEventListener('click', resetAll);
+
+$('scenSel').addEventListener('change', e => loadScenario(e.target.value));
+$('typeSel').addEventListener('change', () => loadList());
+
+svg.addEventListener('keydown', e => {
+  const g = e.target.closest('.pl');
+  if (!g || g.classList.contains('locked') || e.key !== 'Enter') return;
+  const id = +g.dataset.id;
+  if (selected.has(id)) selected.delete(id); else if (selected.size < 6) selected.add(id);
+  clearOverlay(); renderPlayers(); renderDisc(); renderChips();
+});
+
+boot();
+</script>
+</body>
+</html>

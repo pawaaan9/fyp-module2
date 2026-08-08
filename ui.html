@@ -324,15 +324,11 @@ function drawPitch(){
 }
 
 /* ---------------- rendering ---------------- */
-/* Deltas off the scorer are small in absolute terms, so every reported CHANGE
-   is displayed amplified by this factor. "before" is the real baseline; "after"
-   is then shown as before + amplified change, so the numbers on screen agree
-   with each other. Set to 1 to show everything at true scale. */
-const DELTA_GAIN = 3;
+/* Every score and every change on screen is the raw scorer output. Nothing is
+   scaled, amplified or reconstructed for presentation. */
 
 const fmt    = (v,d=4) => v.toFixed(d);
 const signed = (v,d=4) => (v>0?'+':v<0?'−':'') + Math.abs(v).toFixed(d);
-const shown  = v => v * DELTA_GAIN;          // a change, as displayed
 
 function renderPlayers(){
   gPlayers.textContent = '';
@@ -385,14 +381,15 @@ function renderDisc(){
 }
 
 function renderScores(){
-  const d = shown(current - baseline);
+  const d = current - baseline;
   const e = $('delta');
   e.textContent = Math.abs(d) < 1e-9 ? '0.0000' : signed(d);
   e.className = 'delta num ' + (d > 1e-9 ? 'up' : d < -1e-9 ? 'down' : 'flat');
-  /* "after" is rebuilt from the amplified change so the row adds up on screen:
-     before + delta === after. It is not the raw scorer output any more. */
+  /* Both figures come straight from the scorer, so before + delta === after
+     holds because it is true, not because "after" was rebuilt to make it look
+     that way. */
   $('sBefore').textContent = fmt(baseline);
-  $('sAfter').textContent  = fmt(baseline + d);
+  $('sAfter').textContent  = fmt(current);
 }
 
 /* button enablement only — kept apart from the hint text so that finishing a
@@ -453,7 +450,7 @@ function renderLog(){
     const row = document.createElement('div'); row.className = 'row';
     const d = document.createElement('span');
     d.className = 'd ' + (e.delta > 1e-9 ? 'up' : e.delta < -1e-9 ? 'down' : 'flat');
-    d.textContent = signed(shown(e.delta));
+    d.textContent = signed(e.delta);
     const t = document.createElement('span'); t.className = 't'; t.textContent = e.text;
     row.append(d, t); box.appendChild(row);
   }
@@ -668,8 +665,8 @@ $('btnOpt').addEventListener('click', async () => {
         ? `#${ids[0]} best spot (${maximise ? 'attack' : 'defence'})`
         : `joint search, ${ids.length} players, ${$('roundsSel').value} pass(es)`);
     $('searchHint').textContent = ids.length === 1
-      ? `Best legal spot found. ${maximise ? 'Danger gained' : 'Danger removed'}: ${shown(gain).toFixed(4)}.`
-      : `Joint result: ${shown(gain).toFixed(4)}. Compare against optimising them one at a time.`;
+      ? `Best legal spot found. ${maximise ? 'Danger gained' : 'Danger removed'}: ${gain.toFixed(4)}.`
+      : `Joint result: ${gain.toFixed(4)}. Compare against optimising them one at a time.`;
     renderPlayers(); renderDisc(); renderScores();
   } catch(err){
     $('searchHint').textContent = 'Search failed: ' + err.message;

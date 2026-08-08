@@ -131,12 +131,27 @@ def dashboard():
 
 @app.get("/health")
 def health():
-    """Service status and — importantly — which scorer is active."""
+    """Service status and — importantly — which scorer is active.
+
+    Corners and free kicks are scored by separately fitted models, so the
+    per-type breakdown is reported too: a single name would hide the case where
+    one type is trained and the other is still on the placeholder.
+    """
+    by_type = {}
+    for sp_type in ("corner", "freekick"):
+        inner = getattr(SCORER, "scorer_for", lambda _t: SCORER)(sp_type)
+        by_type[sp_type] = {
+            "scorer": inner.name,
+            "trained_model": inner.is_trained_model,
+            "val_auc": getattr(inner, "val_auc", None),
+        }
+
     return {
         "status": "ok",
         "scenarios_loaded": len(SCENARIOS),
         "scorer": SCORER.name,
         "trained_model": SCORER.is_trained_model,
+        "scorers_by_set_piece_type": by_type,
         "warning": None
         if SCORER.is_trained_model
         else "placeholder scorer active; scores are not model predictions",

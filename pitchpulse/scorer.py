@@ -116,9 +116,70 @@ class GATScorer:
             return float(self.torch.sigmoid(logit).item())
 
 
-def get_scorer(prefer_trained=True, checkpoint_path=CHECKPOINT_PATH, verbose=True):
-    """Return the trained scorer if the checkpoint exists, otherwise fall back
-    to the heuristic and say so loudly."""
+BASELINE_PATH = os.environ.get(
+    "PITCHPULSE_BASELINE", "models/module2_baseline_corner.json"
+)
+
+
+class RoutingScorer:
+    """One scorer object that dispatches on the scenario's set-piece type.
+
+    Corners and free kicks have separately fitted baselines, so "the scorer" is
+    really two models. Module 2 hands a single callable to simulate.py, so the
+    routing has to hide behind the same `scorer(scenario) -> float` interface
+    rather than leak out to every call site.
+
+    A per-type mapping also means a partially trained system degrades honestly:
+    types with weights use them, the rest fall back to the placeholder, and
+    `is_trained_model` goes False for the whole object so nothing downstream
+    reports placeholder output as a model prediction.
+    """
+
+    def __init__(self, by_type, fallback=None):
+        if not by_type and fallback is None:
+            raise ValueError("RoutingScorer needs at least one scorer")
+        self.by_type = dict(by_type)
+        self.fallback = fallback
+        self.is_trained_model = bool(self.by_type) and all(
+            s.is_trained_model for s in self.by_type.values()
+        ) and (fallback is None or fallback.is_trained_model)
+        inner = ", ".join(f"{k}={s.name}" for k, s in sorted(self.by_type.items()))
+        if fallback is not None:
+            inner += f", *={fallback.name}"
+        self.name = f"routing({inner})"
+
+    def scorer_for(self, set_piece_type):
+        s = self.by_type.get(set_piece_type, self.fallback)
+        if s is None:
+            raise ValueError(
+                f"no scorer available for set_piece_type '{set_piece_type}'"
+            )
+        return s
+
+    def __call__(self, scenario):
+        return self.scorer_for(scenario.get("set_piece_type"))(scenario)
+
+
+def get_scorer(
+    prefer_trained=True,
+    checkpoint_path=CHECKPOINT_PATH,
+    baseline_path=None,
+    verbose=True,
+):
+    """Three-step fallback chain, best first:
+
+        1. Module 1's trained GAT          (graph structure + learned weights)
+        2. Module 2's logistic baseline    (learned weights, no graph)
+        3. HeuristicScorer                 (neither -- placeholder only)
+
+    Whichever loads first wins, and the choice is printed so no result is ever
+    produced without knowing which scorer made it.
+
+    At step 2 the per-set-piece-type baselines are loaded and wrapped in a
+    RoutingScorer, because a corner model scoring a free kick returns a
+    plausible-looking wrong number. Pass an explicit `baseline_path` (or set
+    PITCHPULSE_BASELINE) to force one specific model for everything.
+    """
     if prefer_trained and os.path.exists(checkpoint_path):
         try:
             scorer = GATScorer(checkpoint_path)
@@ -128,6 +189,47 @@ def get_scorer(prefer_trained=True, checkpoint_path=CHECKPOINT_PATH, verbose=Tru
         except Exception as exc:  # noqa: BLE001
             if verbose:
                 print(f"[scorer] failed to load GAT ({exc}); falling back")
+
+    if prefer_trained:
+        try:
+            from .baseline import WEIGHTS_PATHS, LearnedScorer
+
+            forced = baseline_path or os.environ.get("PITCHPULSE_BASELINE")
+            if forced:
+                scorer = LearnedScorer(forced)
+                if verbose:
+                    print(
+                        f"[scorer] using trained logistic baseline from {forced} "
+                        f"(AUC {scorer.val_auc:.3f}) for ALL set-piece types"
+                    )
+                return scorer
+
+            loaded, missing = {}, []
+            for sp_type, path in WEIGHTS_PATHS.items():
+                if os.path.exists(path):
+                    loaded[sp_type] = LearnedScorer(path)
+                else:
+                    missing.append(sp_type)
+
+            if loaded:
+                scorer = RoutingScorer(
+                    loaded, fallback=HeuristicScorer() if missing else None
+                )
+                if verbose:
+                    for sp_type, s in sorted(loaded.items()):
+                        print(
+                            f"[scorer] {sp_type}: trained logistic baseline "
+                            f"from {WEIGHTS_PATHS[sp_type]} (AUC {s.val_auc:.3f})"
+                        )
+                    for sp_type in missing:
+                        print(
+                            f"[scorer] {sp_type}: NO trained weights at "
+                            f"{WEIGHTS_PATHS[sp_type]} -- using PLACEHOLDER heuristic"
+                        )
+                return scorer
+        except Exception as exc:  # noqa: BLE001
+            if verbose:
+                print(f"[scorer] failed to load baseline ({exc}); falling back")
 
     if verbose:
         print(

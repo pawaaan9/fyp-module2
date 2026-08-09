@@ -497,14 +497,29 @@ async function boot(){
        trained_model flag is what decides; the AUC is only extra detail when the
        scorer happens to have one. */
     const by = h.scorers_by_set_piece_type || {};
-    const parts = Object.entries(by).map(([type, v]) => {
-      const name = type === 'freekick' ? 'free kicks' : 'corners';
-      if (v.val_auc != null) return `${name} AUC ${v.val_auc.toFixed(3)}`;
-      if (v.trained_model)   return `${name} ${v.scorer}`;
-      return `${name} PLACEHOLDER`;
-    });
+
+    /* Say WHOSE model is scoring, in words a coach or an examiner reads at a
+       glance -- "module1-gat-corner" is an internal id, not an explanation. */
+    const label = v => {
+      if (!v.trained_model) return 'PLACEHOLDER';
+      if (/gat/i.test(v.scorer || '')) return "Module 1 GAT";
+      if (v.val_auc != null) return `Module 2 baseline · AUC ${v.val_auc.toFixed(3)}`;
+      return v.scorer;
+    };
+    const pretty = t => (t === 'freekick' ? 'free kicks' : 'corners');
+
+    const entries = Object.entries(by);
+    const labels = entries.map(([, v]) => label(v));
+    /* When both set-piece types run the same kind of model, say it once and
+       list the types -- repeating an identical label twice reads as noise. */
+    const sameEverywhere = labels.length > 0 && labels.every(l => l === labels[0]);
+
+    const summary = sameEverywhere
+      ? `Scoring with ${labels[0]} · ${entries.map(([t]) => pretty(t)).join(' + ')}`
+      : entries.map(([t], i) => `${pretty(t)}: ${labels[i]}`).join(' · ');
+
     $('scorerName').textContent = h.trained_model
-      ? (parts.length ? 'Trained model · ' + parts.join(' · ') : 'Trained model')
+      ? (entries.length ? summary : 'Trained model')
       : 'PLACEHOLDER SCORER · not a trained model';
     $('scorerName').title = h.scorer;
     $('dot').className = 'dot ' + (h.trained_model ? 'live' : 'warn');

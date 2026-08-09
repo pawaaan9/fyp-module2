@@ -208,8 +208,14 @@ def get_scorer(
     PITCHPULSE_BASELINE) to force one specific baseline for everything.
     """
 
+    # An explicit baseline_path (or PITCHPULSE_BASELINE) is an ablation
+    # instruction: "score everything with this one model". Honour it before
+    # reaching for the GAT, otherwise step 1 always wins and the escape hatch
+    # can never actually be used.
+    forced_baseline = baseline_path or os.environ.get("PITCHPULSE_BASELINE")
+
     # ---- step 1: Module 1's trained GAT, one checkpoint per type ----
-    if prefer_trained:
+    if prefer_trained and not forced_baseline:
         paths = checkpoint_paths or CHECKPOINT_PATHS
         loaded_gat, failed = {}, {}
 
@@ -265,13 +271,13 @@ def get_scorer(
         try:
             from .baseline import WEIGHTS_PATHS, LearnedScorer
 
-            forced = baseline_path or os.environ.get("PITCHPULSE_BASELINE")
-            if forced:
-                scorer = LearnedScorer(forced)
+            if forced_baseline:
+                scorer = LearnedScorer(forced_baseline)
                 if verbose:
                     print(
-                        f"[scorer] using trained logistic baseline from {forced} "
-                        f"(AUC {scorer.val_auc:.3f}) for ALL set-piece types"
+                        f"[scorer] using trained logistic baseline from "
+                        f"{forced_baseline} (AUC {scorer.val_auc:.3f}) for ALL "
+                        f"set-piece types"
                     )
                 return scorer
 

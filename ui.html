@@ -484,7 +484,21 @@ async function boot(){
   renderSide();
   try {
     const h = await api('/health');
-    $('scorerName').textContent = h.scorer + (h.trained_model ? '' : ' · placeholder');
+    /* The badge is read by people, not developers: say what is running and how
+       well it scores. The raw scorer id stays on the tooltip so the technical
+       detail is one hover away. The placeholder case must stay unmistakable --
+       no figure on this screen means anything if it is showing. */
+    const by = h.scorers_by_set_piece_type || {};
+    const parts = Object.entries(by).map(([type, v]) => {
+      const name = type === 'freekick' ? 'free kicks' : 'corners';
+      return v.val_auc != null
+        ? `${name} AUC ${v.val_auc.toFixed(3)}`
+        : `${name} placeholder`;
+    });
+    $('scorerName').textContent = h.trained_model
+      ? (parts.length ? 'Trained model · ' + parts.join(' · ') : 'Trained model')
+      : 'PLACEHOLDER SCORER · not a trained model';
+    $('scorerName').title = h.scorer;
     $('dot').className = 'dot ' + (h.trained_model ? 'live' : 'warn');
   } catch(e){
     $('scorerName').textContent = 'API not reachable';

@@ -3,10 +3,13 @@ The Danger Score interface.
 
 Module 2 only ever calls `scorer(scenario) -> float in [0, 1]`.
 
-Two implementations:
-  * HeuristicScorer -- no model, no torch. Use this TODAY so Module 2 can be
-    built and demoed before Module 1's GAT is ready.
-  * GATScorer       -- loads Chamara's saved checkpoint.
+Three implementations, best first:
+  * GATScorer      -- Module 1's trained GAT. One instance per set-piece type,
+                      because corner and free-kick models have different
+                      graph-feature dimensions (6 vs 4) and are not
+                      interchangeable.
+  * LearnedScorer  -- Module 2's logistic baseline (see baseline.py).
+  * HeuristicScorer-- no model, no torch. A transparent placeholder.
 
 Swapping between them is one line. Nothing else in Module 2 changes.
 """
@@ -15,8 +18,7 @@ import math
 import os
 
 from .contract import GOAL, validate
-
-CHECKPOINT_PATH = os.environ.get("PITCHPULSE_CHECKPOINT", "models/module1_gat.pt")
+from .graph import CHECKPOINT_PATHS
 
 
 def _sigmoid(z):
@@ -88,31 +90,56 @@ class HeuristicScorer:
 
 
 class GATScorer:
-    """Wraps Module 1's trained model. Torch is imported lazily so that this
-    file stays importable on a machine without torch installed."""
+    """Wraps ONE of Module 1's trained models.
 
-    name = "module1-gat"
+    Deliberately single-type. The corner and free-kick checkpoints have
+    different `graph_feat_dim`, so a shared instance is not merely unwise --
+    the tensors would not even concatenate. Binding one scorer to one type and
+    refusing everything else turns that into a clear error at the boundary
+    rather than a shape error deep inside the classifier.
+
+    Torch is imported lazily so this file stays importable on a machine without
+    torch installed.
+    """
+
     is_trained_model = True
 
-    def __init__(self, checkpoint_path=CHECKPOINT_PATH, device=None):
-        import torch  # noqa: F401  (lazy on purpose)
+    def __init__(self, checkpoint_path, device=None):
+        import torch
 
-        from .graph import build_graph, load_model  # Module 1 owns these
+        from .graph import build_graph, load_model
 
         self.torch = torch
         self.build_graph = build_graph
+        self.checkpoint_path = str(checkpoint_path)
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = load_model(checkpoint_path, self.device)
-        self.model.eval()
+        self.model = load_model(self.checkpoint_path, self.device)
+        self.set_piece_type = getattr(self.model, "set_piece_type", None)
+        self.val_auc = None  # Module 1's checkpoints do not record one
+        self.name = f"module1-gat-{self.set_piece_type or 'unknown'}"
 
     def __call__(self, scenario):
         validate(scenario)
+
+        got = scenario.get("set_piece_type")
+        if self.set_piece_type and got != self.set_piece_type:
+            raise ValueError(
+                f"{self.name} was trained on '{self.set_piece_type}' but was "
+                f"given a '{got}' scenario."
+            )
+
         data = self.build_graph(scenario).to(self.device)
         with self.torch.no_grad():
             batch = self.torch.zeros(
                 data.x.size(0), dtype=self.torch.long, device=self.device
             )
-            logit, _, _ = self.model(data.x, data.edge_index, data.edge_attr, batch)
+            logit, _, _ = self.model(
+                data.x,
+                data.edge_index,
+                data.edge_attr,
+                batch,
+                data.graph_feat.to(self.device),
+            )
             return float(self.torch.sigmoid(logit).item())
 
 
@@ -124,7 +151,7 @@ BASELINE_PATH = os.environ.get(
 class RoutingScorer:
     """One scorer object that dispatches on the scenario's set-piece type.
 
-    Corners and free kicks have separately fitted baselines, so "the scorer" is
+    Corners and free kicks have separately fitted models, so "the scorer" is
     really two models. Module 2 hands a single callable to simulate.py, so the
     routing has to hide behind the same `scorer(scenario) -> float` interface
     rather than leak out to every call site.
@@ -162,7 +189,7 @@ class RoutingScorer:
 
 def get_scorer(
     prefer_trained=True,
-    checkpoint_path=CHECKPOINT_PATH,
+    checkpoint_paths=None,
     baseline_path=None,
     verbose=True,
 ):
@@ -175,21 +202,65 @@ def get_scorer(
     Whichever loads first wins, and the choice is printed so no result is ever
     produced without knowing which scorer made it.
 
-    At step 2 the per-set-piece-type baselines are loaded and wrapped in a
+    Both step 1 and step 2 load per-set-piece-type and wrap the result in a
     RoutingScorer, because a corner model scoring a free kick returns a
     plausible-looking wrong number. Pass an explicit `baseline_path` (or set
-    PITCHPULSE_BASELINE) to force one specific model for everything.
+    PITCHPULSE_BASELINE) to force one specific baseline for everything.
     """
-    if prefer_trained and os.path.exists(checkpoint_path):
-        try:
-            scorer = GATScorer(checkpoint_path)
-            if verbose:
-                print(f"[scorer] using trained GAT from {checkpoint_path}")
-            return scorer
-        except Exception as exc:  # noqa: BLE001
-            if verbose:
-                print(f"[scorer] failed to load GAT ({exc}); falling back")
 
+    # ---- step 1: Module 1's trained GAT, one checkpoint per type ----
+    if prefer_trained:
+        paths = checkpoint_paths or CHECKPOINT_PATHS
+        loaded_gat, failed = {}, {}
+
+        for sp_type, path in paths.items():
+            if not os.path.exists(path):
+                failed[sp_type] = "no checkpoint file"
+                continue
+            try:
+                loaded_gat[sp_type] = GATScorer(path)
+            except Exception as exc:  # noqa: BLE001
+                failed[sp_type] = str(exc)
+
+        if loaded_gat:
+            if verbose:
+                for sp_type, s in sorted(loaded_gat.items()):
+                    print(f"[scorer] {sp_type}: trained GAT from {paths[sp_type]}")
+                for sp_type, why in sorted(failed.items()):
+                    print(f"[scorer] {sp_type}: GAT unavailable ({why})")
+
+            if not failed:
+                return RoutingScorer(loaded_gat)
+
+            # Partial load. Fall through to the baseline for the missing types
+            # rather than to the placeholder, since a trained-but-weaker model
+            # beats no model at all.
+            try:
+                from .baseline import WEIGHTS_PATHS, LearnedScorer
+
+                for sp_type in list(failed):
+                    wpath = WEIGHTS_PATHS.get(sp_type)
+                    if wpath and os.path.exists(wpath):
+                        loaded_gat[sp_type] = LearnedScorer(wpath)
+                        if verbose:
+                            print(
+                                f"[scorer] {sp_type}: falling back to logistic "
+                                f"baseline from {wpath}"
+                            )
+                        failed.pop(sp_type)
+            except Exception as exc:  # noqa: BLE001
+                if verbose:
+                    print(f"[scorer] baseline fallback failed ({exc})")
+
+            return RoutingScorer(
+                loaded_gat, fallback=HeuristicScorer() if failed else None
+            )
+
+        if verbose:
+            for sp_type, why in sorted(failed.items()):
+                print(f"[scorer] {sp_type}: GAT unavailable ({why})")
+
+    # ---- step 2: Module 2's logistic baseline ----
     if prefer_trained:
         try:
             from .baseline import WEIGHTS_PATHS, LearnedScorer
@@ -231,6 +302,7 @@ def get_scorer(
             if verbose:
                 print(f"[scorer] failed to load baseline ({exc}); falling back")
 
+    # ---- step 3: placeholder ----
     if verbose:
         print(
             "[scorer] using HeuristicScorer -- PLACEHOLDER, not a trained model. "

@@ -73,6 +73,7 @@ def from_record(record, scenario_id=None):
         or record.get("event_id"),
         "set_piece_type": "corner" if is_corner else "freekick",
         "delivery_end": record.get("pass_end_location"),
+        "kick_location": record.get("location") or record.get("corner_location"),
         "players": players,
     }
 

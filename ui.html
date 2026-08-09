@@ -487,13 +487,21 @@ async function boot(){
     /* The badge is read by people, not developers: say what is running and how
        well it scores. The raw scorer id stays on the tooltip so the technical
        detail is one hover away. The placeholder case must stay unmistakable --
-       no figure on this screen means anything if it is showing. */
+       no figure on this screen means anything if it is showing.
+
+       Not every trained scorer carries a validation AUC: Module 1's GAT
+       checkpoints record their architecture and feature layout but no score, so
+       val_auc is null for them. A missing AUC must therefore NOT be read as
+       "placeholder" -- that would label a working trained model as untrained,
+       which is the single most misleading thing this badge could say. The
+       trained_model flag is what decides; the AUC is only extra detail when the
+       scorer happens to have one. */
     const by = h.scorers_by_set_piece_type || {};
     const parts = Object.entries(by).map(([type, v]) => {
       const name = type === 'freekick' ? 'free kicks' : 'corners';
-      return v.val_auc != null
-        ? `${name} AUC ${v.val_auc.toFixed(3)}`
-        : `${name} placeholder`;
+      if (v.val_auc != null) return `${name} AUC ${v.val_auc.toFixed(3)}`;
+      if (v.trained_model)   return `${name} ${v.scorer}`;
+      return `${name} PLACEHOLDER`;
     });
     $('scorerName').textContent = h.trained_model
       ? (parts.length ? 'Trained model · ' + parts.join(' · ') : 'Trained model')

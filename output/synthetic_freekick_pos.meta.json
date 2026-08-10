@@ -1,0 +1,31 @@
+{
+  "set_piece_type": "freekick",
+  "sign": "pos",
+  "sign_value": 1.0,
+  "rule_version": "1.0",
+  "calibration": {
+    "rule_version": "1.0",
+    "tau": 12.0,
+    "cap": 10.0,
+    "w_goal": 3.0,
+    "w_free": 1.0,
+    "gain": 1.6,
+    "mu": 0.5925545283132462,
+    "sigma": 0.26155841787077794
+  },
+  "n_real_frames": 1090,
+  "n_rows": 13080,
+  "variants_per_frame": 12,
+  "variant_counts": {
+    "original": 1090,
+    "tighten": 2422,
+    "jitter": 2415,
+    "loosen": 2389,
+    "advance": 2399,
+    "retreat": 2365
+  },
+  "seed": 0,
+  "source": "output/freekicks_dataset_full.jsonl",
+  "labels_are_synthetic": true,
+  "warning": "Synthetic geometric labels, NOT football outcomes. Models trained on this file are directional controls and must never be reported as football results."
+}

@@ -1,0 +1,31 @@
+{
+  "set_piece_type": "corner",
+  "sign": "neg",
+  "sign_value": -1.0,
+  "rule_version": "1.0",
+  "calibration": {
+    "rule_version": "1.0",
+    "tau": 12.0,
+    "cap": 10.0,
+    "w_goal": 3.0,
+    "w_free": 1.0,
+    "gain": 1.6,
+    "mu": 1.0847804008160264,
+    "sigma": 0.23257197699926688
+  },
+  "n_real_frames": 2460,
+  "n_rows": 29520,
+  "variants_per_frame": 12,
+  "variant_counts": {
+    "original": 2460,
+    "jitter": 5359,
+    "retreat": 5571,
+    "advance": 5317,
+    "loosen": 5400,
+    "tighten": 5413
+  },
+  "seed": 0,
+  "source": "output/corners_dataset_full.jsonl",
+  "labels_are_synthetic": true,
+  "warning": "Synthetic geometric labels, NOT football outcomes. Models trained on this file are directional controls and must never be reported as football results."
+}

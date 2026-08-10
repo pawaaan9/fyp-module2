@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+
+# Synthetic control datasets: ~184MB, and fully regenerable from
+# build_synthetic_dataset.py + the committed .meta.json calibration.
+# The .meta.json files ARE committed -- they are what makes a rebuild reproducible.
+output/synthetic_*.jsonl

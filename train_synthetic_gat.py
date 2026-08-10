@@ -216,7 +216,7 @@ def main():
             loss = criterion(logit.view(-1), batch.y.view(-1))
             loss.backward()
             optimiser.step()
-            total += float(loss) * batch.y.numel()
+            total += float(loss.detach()) * batch.y.numel()
             n += batch.y.numel()
 
         stats = evaluate(model, test_loader, device, criterion)

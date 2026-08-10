@@ -1,0 +1,60 @@
+
+==============================================================================
+=== corner ===
+==============================================================================
+  150 real scenarios (unedited StatsBomb geometry)
+
+  scorer                                         ADVANCE                 TIGHTEN
+                                   %corr    n    mean|d|   %corr    n    mean|d|
+  --------------------------------------------------------------------------
+  synthetic RULE pos  [ceiling]    100.0  150    0.01009    97.1  105    0.00506
+  synthetic RULE neg  [ceiling]      0.0  150    0.01009     2.9  105    0.00506
+  synthetic GAT pos                100.0  150    0.00963    97.1  105    0.00496
+  synthetic GAT neg                  0.0  150    0.00970     2.9  105    0.00487
+  module 1 GAT (real)               17.3  150    0.00038    61.0  105    0.00008
+
+==============================================================================
+=== freekick ===
+==============================================================================
+  150 real scenarios (unedited StatsBomb geometry)
+
+  scorer                                         ADVANCE                 TIGHTEN
+                                   %corr    n    mean|d|   %corr    n    mean|d|
+  --------------------------------------------------------------------------
+  synthetic RULE pos  [ceiling]    100.0  150    0.00504   100.0  118    0.00189
+  synthetic RULE neg  [ceiling]      0.0  150    0.00504     0.0  118    0.00189
+  synthetic GAT pos                100.0  150    0.00521    98.3  118    0.00174
+  synthetic GAT neg                  0.0  150    0.00533     1.7  118    0.00185
+  module 1 GAT (real)               82.0  150    0.00218     4.2  118    0.00115
+
+
+==============================================================================
+=== CONTROL VERDICT ===
+==============================================================================
+
+Percentages are measured against the sign=+1 expectation for every row,
+so a correctly working NEG model scores LOW. That asymmetry is the test.
+
+
+  --- corner ---
+    pos / advance   100.0%  RECOVERED   (rule reference 100.0%)    expected RECOVERED  OK
+    pos / tighten    97.1%  RECOVERED   (rule reference 97.1%)     expected RECOVERED  OK
+    neg / advance     0.0%  INVERTED    (rule reference 0.0%)      expected INVERTED   OK
+    neg / tighten     2.9%  INVERTED    (rule reference 2.9%)      expected INVERTED   OK
+
+  --- freekick ---
+    pos / advance   100.0%  RECOVERED   (rule reference 100.0%)    expected RECOVERED  OK
+    pos / tighten    98.3%  RECOVERED   (rule reference 100.0%)    expected RECOVERED  OK
+    neg / advance     0.0%  INVERTED    (rule reference 0.0%)      expected INVERTED   OK
+    neg / tighten     1.7%  INVERTED    (rule reference 0.0%)      expected INVERTED   OK
+
+  A trained model cannot beat the rule it is imitating, so compare each
+  model against its rule ceiling rather than against 100%.
+
+  If pos RECOVERED and neg INVERTED on the same probes, Module 2 transmits
+  the scorer's direction faithfully in both directions -- it reports what the
+  scorer says rather than always reporting improvement. Step 2's result for
+  the real GAT is then a fact about that model, not a pipeline artefact.
+
+  REMINDER: the synthetic models are geometry controls, not football models.
+

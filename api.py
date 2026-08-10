@@ -27,7 +27,7 @@ from pitchpulse.simulate import (
     what_if,
 )
 
-DATA_DIR = Path("output")
+DATA_DIR = Path(__file__).parent / "output"
 UI_FILE = Path(__file__).parent / "ui.html"
 
 app = FastAPI(
@@ -66,6 +66,13 @@ def _load():
 def startup():
     SCENARIOS.update(_load())
     print(f"[api] {len(SCENARIOS)} scenarios loaded | scorer: {SCORER.name}")
+    if not SCENARIOS:
+        # An empty store looks identical to a working board with nothing on it.
+        # Say why, rather than letting the dashboard render a blank pitch.
+        print(
+            f"[api] WARNING: no scenarios found in {DATA_DIR}. Expected "
+            "corners_dataset_full.jsonl / freekicks_dataset_full.jsonl there."
+        )
     print(f"[api] dashboard: http://127.0.0.1:8000/")
 
 
